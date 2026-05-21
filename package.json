@@ -2,7 +2,9 @@
   "name": "tdlr-backend",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": "18.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "rss-parser": "^3.13.0"
   }
