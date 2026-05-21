@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TDLR - Live Content Digest</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    body { background: #0a0f1e; }
+    .glass-panel { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(99, 102, 241, 0.15); }
+    .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+    .tab-active { border-bottom: 3px solid #818cf8; color: #818cf8; }
+    .news-header { background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%); }
+    .finance-header { background: linear-gradient(135deg, #059669 0%, #2563eb 100%); }
+    .bigpicture-header { background: linear-gradient(135deg, #7c3aed 0%, #db2777 50%, #f59e0b 100%); }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .glow { box-shadow: 0 0 30px rgba(124, 58, 237, 0.15); }
+    input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.3); }
+    .loader { border: 3px solid rgba(255,255,255,0.1); border-top: 3px solid #818cf8; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .progress-bar { height: 4px; background: rgba(129, 140, 248, 0.2); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #818cf8, #c084fc); transition: width 0.3s ease; }
+    .inference-card { border-left: 4px solid; transition: all 0.2s ease; }
+    .inference-red { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.05); }
+    .inference-orange { border-left-color: #f97316; background: rgba(249, 115, 22, 0.05); }
+    .inference-blue { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
+    .inference-purple { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.05); }
+    .inference-green { border-left-color: #10b981; background: rgba(16, 185, 129, 0.05); }
+  </style>
+</head>
+<body class="min-h-screen text-gray-100" style="background: linear-gradient(135deg, #0a0f1e 0%, #111827 50%, #0a0f1e 100%);">
+  <div id="app" class="max-w-6xl mx-auto px-4 py-6">Initializing TDLR...</div>
+
+  <script>
+    // State
+    let currentTab = 'summary';
+    let channels = getSavedChannels();
+    let posts = [];
+    let isLoading = true;
+    let lastFetch = null;
+    let synthesisResults = [];
+    let userTimezone = getSavedTimezone() || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let backendUrl = window.location.origin; // Points to your Vercel URL automatically
+
+    const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney', 'UTC'];
+    const defaultChannels = [
+      { id: 1, name: "Gregory Mannarino", platform: "Substack", category: "Finance", url: "https://substack.com/@gregorymannarino" },
+      { id: 2, name: "Candace Owens", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@realcandaceo" },
+      { id: 3, name: "ITM Trading", platform: "YouTube", category: "Finance", url: "https://youtube.com/@itmtrading" },
+      { id: 4, name: "Gerald Celente", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@gcelente" },
+      { id: 5, name: "Simon Dixon", platform: "YouTube", category: "Finance", url: "https://youtube.com/@simondixon21" },
+      { id: 6, name: "Blockchain Backer", platform: "YouTube", category: "Finance", url: "https://youtube.com/@bcbacker" },
+      { id: 7, name: "Richard Fain", platform: "YouTube", category: "Finance", url: "https://www.youtube.com/@richardfain" },
+      { id: 8, name: "American Disclosure News", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@americandiscoursenews" },
+      { id: 9, name: "Ian Carroll", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@iancarrollshow" },
+      { id: 10, name: "Tucker Carlson", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@tuckercarlson" },
+      { id: 12, name: "Sulaiman Ahmed", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@sulaimanahmedx" },
+      { id: 13, name: "Economic Ninja", platform: "YouTube", category: "Finance", url: "https://youtube.com/@economicninja" },
+      { id: 14, name: "Jimmy Dore", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@thejimmydoreshow" }
+    ];
+
+    function getSavedChannels() { try { const s = localStorage.getItem('tdlr_channels_v3'); return s ? JSON.parse(s) : defaultChannels; } catch(e) { return defaultChannels; } }
+    function saveChannels(ch) { try { localStorage.setItem('tdlr_channels_v3', JSON.stringify(ch)); } catch(e) {} }
+    function getSavedTimezone() { try { return localStorage.getItem('tdlr_timezone'); } catch(e) { return null; } }
+    function saveTimezoneSetting(tz) { try { localStorage.setItem('tdlr_timezone', tz); userTimezone = tz; } catch(e) {} }
+    function getTodayKey() { try { return new Date().toLocaleDateString('en-CA', { timeZone: userTimezone }); } catch(e) { return new Date().toISOString().split('T')[0]; } }
+    function getSolidifiedDay() { try { return localStorage.getItem('tdlr_solidified_day'); } catch(e) { return null; } }
+    function setSolidifiedDay(key) { try { localStorage.setItem('tdlr_solidified_day', key); } catch(e) {} }
+    function getSolidifiedData(dayKey) { try { const d = localStorage.getItem(`tdlr_solidified_${dayKey}`); return d ? JSON.parse(d) : null; } catch(e) { return null; } }
+    function saveSolidifiedData(dayKey, data) { try { localStorage.setItem(`tdlr_solidified_${dayKey}`, JSON.stringify(data)); } catch(e) {} }
+
+    // Backend Fetch
+    async function fetchAllData() {
+      isLoading = true;
+      renderApp();
+      try {
+        const res = await fetch(`${backendUrl}/api/fetch-posts?channels=${encodeURIComponent(JSON.stringify(channels))}`);
+        if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+        const data = await res.json();
+        posts = data.posts || [];
+        lastFetch = new Date(data.fetchedAt || Date.now());
+        
+        // Check errors
+        if (data.errors && data.errors.length > 0) {
+          console.warn('Channel fetch errors:', data.errors);
+        }
+
+        synthesisResults = generateSynthesis(posts);
+        isLoading = false;
+        
+        // Solidify at 11:59 PM
+        const now = new Date();
+        const hours = parseInt(now.toLocaleTimeString('en-US', { timeZone: userTimezone, hour12: false, hour: '2-digit' }));
+        const minutes = parseInt(now.toLocaleTimeString('en-US', { timeZone: userTimezone, hour12: false, minute: '2-digit' }));
+        const todayKey = getTodayKey();
+        if (hours === 23 && minutes >= 59) {
+          saveSolidifiedData(todayKey, { posts, synthesis: synthesisResults, timestamp: now.toISOString() });
+          setSolidifiedDay(todayKey);
+        }
+        renderApp();
+      } catch (err) {
+        console.error('Fetch failed:', err);
+        isLoading = false;
+        renderApp();
+        // Fallback to last cached posts if available
+      }
+    }
+
+    // Synthesis Engine
+    function generateSynthesis(allPosts) {
+      const news = allPosts.filter(p => p.category === 'News/Politics');
+      const finance = allPosts.filter(p => p.category === 'Finance');
+      if (allPosts.length === 0) return [];
+      const nt = news.map(p => `${p.title} ${p.summary}`).join(' ').toLowerCase();
+      const ft = finance.map(p => `${p.title} ${p.summary}`).join(' ').toLowerCase();
+      const themes = [];
+      const score = (kw, threshold) => { let s = 0; kw.forEach(k => { if (nt.includes(k)) s++; if (ft.includes(k)) s++; }); return s >= threshold; };
+      if (score(['inflation', 'dollar', 'debt', 'spending', 'policy', 'rates', 'fed', 'treasury', 'budget', 'tax', 'economy', 'deficit'], 4)) themes.push({ color: 'orange', icon: '📊', title: 'Economic Policy ↔ Market Convergence', insight: 'Both political and financial channels signal heightened concern about economic policy. Finance sources flag dollar weakness/rates, politics question spending. Convergence suggests macro consequences where policy directly impacts markets.', severity: 'HIGH', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/dollar|inflation|debt|policy|spending|budget|rates|economy/)).map(p => p.creator))] });
+      if (score(['crisis', 'collapse', 'warning', 'crash', 'reset', 'preparation', 'hedge', 'danger', 'threat', 'uncertainty', 'instability'], 5)) themes.push({ color: 'red', icon: '⚠️', title: 'Systemic Risk Signals Across Sectors', insight: 'Unusual number of sources use crisis-prep language simultaneously. Financial channels discuss portfolio protection, politics warn of institutional instability. When both spheres signal concern, it often precedes market-moving events.', severity: 'CRITICAL', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/crisis|warning|collapse|danger|reset|threat/)).map(p => p.creator))] });
+      if (score(['mainstream', 'narrative', 'media', 'telling you', 'truth', 'covered up', 'hidden', 'real story', 'blind spot', 'ignored'], 5)) themes.push({ color: 'blue', icon: '🔍', title: 'Growing Narrative Gap Between Media & Reality', insight: 'Both political and financial channels increasingly frame content as counter-narrative. Pattern suggests divergence between official reports and alternative analysis, indicating information asymmetry.', severity: 'MEDIUM', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/truth|story|narrative|mainstream|blind/)).map(p => p.creator))] });
+      if (score(['crypto', 'bitcoin', 'regulation', 'central bank', 'digital', 'blockchain', 'defi', 'banking', 'sovereign', 'control'], 4)) themes.push({ color: 'purple', icon: '₿', title: 'Crypto & Financial Sovereignty Under Political Pressure', insight: 'Finance discusses crypto as hedges, politics cover regulatory control. Intersection suggests battleground: as governments tighten monetary control, alternative systems gain relevance.', severity: 'HIGH', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/crypto|bitcoin|central bank|banking|digital/)).map(p => p.creator))] });
+      if (score(['distrust', 'accountability', 'corruption', 'establishment', 'system', 'broken', 'failed', 'class vs', 'people', 'disconnect'], 4)) themes.push({ color: 'orange', icon: '🏛️', title: 'Cross-Sector Institutional Distrust Rising', insight: 'Both spheres reflect skepticism toward established institutions. Systemic pattern suggests fundamental trust shift. When trust erodes, people seek alternative value stores and information sources.', severity: 'HIGH', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/establishment|system|broken|class|people|corrupt/)).map(p => p.creator))] });
+      if (score(['war', 'conflict', 'geopolitical', 'international', 'global', 'foreign', 'tension', 'trade', 'sanction'], 3)) themes.push({ color: 'green', icon: '🌍', title: 'Geopolitical Tensions Creating Financial Spillover', insight: 'Politics cover international tensions, finance discusses market implications. Alignment suggests smart money adjusting portfolios for upcoming disruptions.', severity: 'MEDIUM', sources: [...new Set(allPosts.filter(p => p.title.toLowerCase().match(/global|international|trade|foreign|war|conflict/)).map(p => p.creator))] });
+      if (themes.length < 3 && allPosts.length > 0) themes.push({ color: 'blue', icon: '🔗', title: 'Political & Financial Narratives Converging', insight: `Today's content across ${[...new Set(allPosts.map(p => p.creator))].length} sources shows alignment between political reporting and financial analysis. Overlapping themes suggest dominant narratives shaping policy and markets.`, severity: 'MEDIUM', sources: [...new Set(allPosts.map(p => p.creator))].slice(0, 5) });
+      return themes.slice(0, 5);
+    }
+
+    // Utils
+    function timeAgo(d) { if (!d) return 'Unknown'; const s = Math.floor((new Date() - new Date(d))/1000); return s<60?'Just now':s<3600?`${Math.floor(s/60)}m ago`:s<86400?`${Math.floor(s/3600)}h ago`:`${Math.floor(s/86400)}d ago`; }
+    function formatLocalTime(d) { try { return new Date(d).toLocaleString('en-US', { timeZone: userTimezone, hour: '2-digit', minute: '2-digit', hour12: true }); } catch(e) { return 'Unknown'; } }
+    function getPlatformBadge(p) { const isY = p==='YouTube'; const c = isY?'bg-red-500/15 text-red-400 border-red-500/30':'bg-orange-500/15 text-orange-400 border-orange-500/30'; return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${c}">${isY?'▶️':'📰'} ${p}</span>`; }
+    function getCategoryIcon(c) { return c==='News/Politics'?'📰':'💰'; }
+
+    // UI
+    function renderHeader() {
+      const status = isLoading ? '<span class="text-yellow-400 flex items-center gap-2"><div class="loader"></div>Syncing with backend...</span>' : `<span class="text-green-400 flex items-center gap-2"><div class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></div>Live • ${lastFetch ? 'Updated ' + timeAgo(lastFetch.toISOString()) : 'just now'}</span>`;
+      return `
+        <header class="text-center mb-8 fade-in">
+          <h1 class="text-5xl font-extrabold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">TDLR</h1>
+          <p class="text-lg text-gray-400 mb-3">Too Long; Didn't Read — Live Content Digest</p>
+          <div class="flex items-center justify-center gap-4 text-sm flex-wrap">
+            <div class="bg-gray-800/50 px-3 py-1.5 rounded-full flex items-center gap-2">${status}</div>
+            <span class="text-gray-500">${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+            <span class="text-gray-500">•</span>
+            <span class="text-gray-400">${channels.length} channels</span>
+            <span class="text-gray-500">•</span>
+            <span class="text-gray-400">${posts.length} posts</span>
+          </div>
+          <button onclick="window.fetchAllData()" class="mt-4 px-4 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition-all">↻ Refresh Now</button>
+        </header>
+      `;
+    }
+
+    function renderTabs() {
+      const tabs = [{id:'summary',label:'📊 Daily Summary'},{id:'feed',label:'📡 Live Feed'},{id:'manage',label:'⚙️ Channels'}];
+      let html = '<nav class="flex items-center justify-center gap-4 mb-8 border-b border-gray-700/50 flex-wrap">';
+      tabs.forEach(t => { const a = currentTab===t.id; html += `<button onclick="window.switchTab('${t.id}')" class="text-lg font-semibold pb-3 px-3 cursor-pointer ${a?'tab-active':'text-gray-500 hover:text-indigo-400'}">${t.label}</button>`; });
+      return html + '</nav>';
+    }
+
+    function renderInferenceCard(inf) {
+      const sc = { CRITICAL:'text-red-400 bg-red-500/10 border border-red-500/30', HIGH:'text-orange-400 bg-orange-500/10 border border-orange-500/30', MEDIUM:'text-blue-400 bg-blue-500/10 border border-blue-500/30' };
+      return `
+        <div class="inference-card inference-${inf.color} rounded-xl p-5 mb-4 fade-in">
+          <div class="flex items-start justify-between mb-3 flex-wrap gap-2">
+            <div class="flex items-center gap-3"><span class="text-2xl">${inf.icon}</span><h3 class="text-lg font-bold text-gray-100">${inf.title}</h3></div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${sc[inf.severity]||sc.MEDIUM}">${inf.severity} SIGNAL</span>
+          </div>
+          <p class="text-sm text-gray-300 leading-relaxed mb-4">${inf.insight}</p>
+          <div class="flex items-center gap-2 flex-wrap"><span class="text-xs text-gray-500">Sources:</span>${inf.sources.slice(0,5).map(s=>`<span class="text-xs bg-gray-800/50 px-2 py-1 rounded border border-gray-700/30 text-gray-400">${s}</span>`).join('')}${inf.sources.length>5?`<span class="text-xs text-gray-500">+${inf.sources.length-5} more</span>`:''}</div>
+        </div>`;
+    }
+
+    function generateDailySummary() {
+      if (isLoading && posts.length===0) return `<div class="text-center py-16"><div class="loader-lg mx-auto mb-6"></div><h2 class="text-xl font-bold text-gray-200">Fetching from backend...</h2><p class="text-gray-400 mt-2">This replaces fragile proxies with official APIs.</p></div>`;
+      const news = posts.filter(p=>p.category==='News/Politics'), finance = posts.filter(p=>p.category==='Finance'), todayKey = getTodayKey(), solidified = getSolidifiedDay();
+      let html = '<div class="space-y-6 fade-in">';
+      const isSolidified = solidified===todayKey;
+      html += `<div class="glass-panel rounded-2xl overflow-hidden glow"><div class="bigpicture-header px-6 py-4 flex items-center justify-between flex-wrap gap-2"><h2 class="text-2xl font-bold text-white">🔮 The Big Picture</h2><div class="flex items-center gap-3"><span class="text-sm text-white/80 bg-white/20 px-3 py-1 rounded-full">${synthesisResults.length} insights</span>${isSolidified?'<span class="solidified-badge text-white text-xs px-3 py-1 rounded-full font-semibold">🔒 Solidified</span>':'<span class="text-white/70 text-xs px-3 py-1 rounded-full bg-white/10">📡 Live</span>'}</div></div><div class="px-6 py-3 bg-purple-500/5 border-b border-purple-500/20"><p class="text-xs text-purple-300">Cross-examining content. Updates live, solidifies at 11:59 PM your time.</p></div><div class="p-6">${synthesisResults.length>0?synthesisResults.map(renderInferenceCard).join(''):'<p class="text-gray-400 text-center py-4">Gathering cross-category data...</p>'}</div></div>`;
+      
+      const renderSec = (title, sp, hc, tk) => {
+        const src = [...new Set(sp.map(p=>p.creator))];
+        if (sp.length===0) return `<div class="glass-panel rounded-2xl overflow-hidden"><div class="${hc} px-6 py-4"><h2 class="text-2xl font-bold text-white">${title}</h2></div><div class="p-6 text-gray-400 text-center">No posts yet.</div></div>`;
+        return `<div class="glass-panel rounded-2xl overflow-hidden"><div class="${hc} px-6 py-4 flex items-center justify-between flex-wrap gap-2"><h2 class="text-2xl font-bold text-white">${title}</h2><div class="flex items-center gap-3"><span class="text-sm text-white/80 bg-white/20 px-3 py-1 rounded-full">${sp.length} posts</span><span class="text-sm text-white/80 bg-white/20 px-3 py-1 rounded-full">${src.length} sources</span></div></div><div class="p-6 space-y-3">${src.map(s=>{const p=sp.filter(x=>x.creator===s);return`<div class="bg-gray-800/40 rounded-xl p-4 border border-gray-700/30 hover:border-indigo-500/30 transition-all"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">${s.charAt(0)}</div><div><h3 class="font-semibold text-gray-100">${s}</h3><div class="flex items-center gap-2 flex-wrap">${getPlatformBadge(p[0].platform)}<span class="text-xs text-gray-500">${p.length} post${p.length>1?'s':''}</span></div></div></div><div class="space-y-2 ml-0 md:ml-11">${p.map(x=>`<div class="bg-gray-900/40 rounded-lg p-3 border border-gray-700/20"><h4 class="font-medium text-gray-200 text-sm mb-1 hover:text-blue-400"><a href="${x.link}" target="_blank" rel="noopener noreferrer" class="hover:underline">${x.title}</a></h4><p class="text-xs text-gray-400 leading-relaxed"><span class="text-blue-400 font-medium">TDLR:</span> ${x.summary}</p><div class="flex items-center justify-between mt-2"><span class="text-xs text-gray-500">${timeAgo(x.timestamp)}</span><a href="${x.link}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300 font-medium">Read/Watch →</a></div></div>`).join('')}</div></div>`;}).join('')}</div><div class="px-6 pb-4"><div class="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-lg p-4 border border-indigo-500/20"><h3 class="text-sm font-semibold text-indigo-300 mb-1">🔑 Takeaway</h3><p class="text-gray-300 text-xs leading-relaxed">${tk}</p></div></div></div>`;
+      };
+      html += renderSec('📰 News & Politics', news, 'news-header', 'Focuses on challenging mainstream narratives, questioning official stories, and highlighting media bias.');
+      html += renderSec('💰 Finance & Markets', finance, 'finance-header', 'Emphasizes economic uncertainty, gold/crypto analysis, and dollar weakness. Highlights hedging strategies.');
+      return html + '</div>';
+    }
+
+    function generatePostCard(post) {
+      return `<div class="glass-panel rounded-xl p-5 card-hover fade-in hover:border-indigo-500/30"><div class="flex items-start justify-between mb-3 flex-wrap gap-3"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg">${post.creator.charAt(0)}</div><div><h3 class="font-semibold text-gray-100">${post.creator}</h3><div class="flex items-center gap-2 flex-wrap">${getPlatformBadge(post.platform)}<span class="text-xs text-gray-500">${timeAgo(post.timestamp)}</span><span class="text-xs text-gray-500">${getCategoryIcon(post.category)} ${post.category}</span></div></div></div></div><h4 class="text-lg font-semibold text-gray-100 mb-2 hover:text-indigo-400"><a href="${post.link}" target="_blank" rel="noopener noreferrer" class="hover:underline">${post.title}</a></h4><div class="bg-gray-900/50 rounded-lg p-3 border border-gray-700/30 mb-3"><p class="text-sm text-gray-300 leading-relaxed"><span class="text-indigo-400 font-semibold">TDLR:</span> ${post.summary}</p></div><div class="flex items-center justify-between flex-wrap gap-2"><span class="text-xs text-gray-500">🕐 ${formatLocalTime(post.timestamp)}</span><a href="${post.link}" target="_blank" rel="noopener noreferrer" class="text-sm text-indigo-400 hover:text-indigo-300 font-medium">Read/Watch →</a></div></div>`;
+    }
+
+    function renderChannelCard(ch) {
+      return `<div class="glass-panel rounded-xl p-4 flex items-center justify-between border border-gray-700/30 flex-wrap gap-3 channel-card"><div class="flex items-center gap-4 min-w-0 flex-1"><div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">${ch.name.charAt(0)}</div><div class="min-w-0"><h4 class="font-semibold text-gray-100 truncate">${ch.name}</h4><div class="flex items-center gap-2 flex-wrap">${getPlatformBadge(ch.platform)}<span class="text-xs text-gray-500 truncate max-w-[200px]">${ch.url}</span></div></div></div><button onclick="window.removeChannel(${ch.id})" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-sm font-medium border border-red-500/30 hover:border-red-500/50 flex-shrink-0">Remove</button></div>`;
+    }
+
+    function renderManageChannels(c) {
+      const f = channels.filter(x=>x.category==='Finance'), n = channels.filter(x=>x.category==='News/Politics'), tzO = TIMEZONES.map(t=>`<option value="${t}" ${t===userTimezone?'selected':''}>${t.replace(/_/g,' ')}</option>`).join('');
+      c.innerHTML = `<div class="fade-in space-y-6"><div class="glass-panel rounded-2xl p-6 glow"><h2 class="text-xl font-bold text-gray-100 mb-4 flex items-center gap-2">⚙️ Timezone Settings</h2><select id="tz" onchange="window.handleTimezoneChange(this.value)" class="w-full md:w-1/2 px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-gray-100 focus:border-indigo-500">${tzO}</select><p class="text-xs text-gray-400 mt-2">Current: <span class="text-indigo-400">${userTimezone.replace(/_/g,' ')}</span></p></div><div class="glass-panel rounded-2xl p-6 glow"><h2 class="text-xl font-bold text-gray-100 mb-4">➕ Add Channel</h2><form id="acf" onsubmit="window.handleAddChannel(event)" class="space-y-4"><input type="url" id="cu" placeholder="https://youtube.com/@handle or https://substack.com/@author" class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-gray-100" required><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" id="cn" placeholder="Name" class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-gray-100"><select id="cc" class="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-gray-100"><option value="News/Politics">📰 News/Politics</option><option value="Finance">💰 Finance</option></select></div><button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl">Add Channel</button></form></div><div class="space-y-6"><div><h3 class="text-lg font-bold text-gray-100 mb-3">📰 News/Politics (${n.length})</h3><div class="space-y-2">${n.length>0?n.map(renderChannelCard).join(''):'<p class="text-gray-500">None.</p>'}</div></div><div><h3 class="text-lg font-bold text-gray-100 mb-3">💰 Finance (${f.length})</h3><div class="space-y-2">${f.length>0?f.map(renderChannelCard).join(''):'<p class="text-gray-500">None.</p>'}</div></div></div></div>`;
+    }
+
+    function renderContent() {
+      const c = document.getElementById('content-area'); if (!c) return;
+      if (currentTab==='summary') c.innerHTML = generateDailySummary();
+      else if (currentTab==='feed') {
+        if (isLoading && posts.length===0) c.innerHTML = '<div class="text-center py-10 text-gray-400">Loading from backend...</div>';
+        else c.innerHTML = `<div class="flex items-center justify-between mb-4"><h2 class="text-xl font-bold">📡 Latest Posts</h2><span class="text-sm text-gray-500">${posts.length} posts</span></div><div class="space-y-4">${posts.length>0?posts.map(generatePostCard).join(''):'<p class="text-gray-400 text-center py-10">No posts found.</p>'}</div>`;
+      } else renderManageChannels(c);
+    }
+
+    function renderApp() {
+      const app = document.getElementById('app'); if (!app) return;
+      app.innerHTML = renderHeader() + renderTabs() + '<main id="content-area"></main><footer class="text-center mt-12 pt-8 border-t border-gray-700/30"><p class="text-gray-500 text-sm">TDLR Aggregator • Serverless Backend • Official APIs</p></footer>';
+      renderContent();
+    }
+
+    window.switchTab = t => { currentTab=t; renderContent(); };
+    window.removeChannel = id => { const c=channels.find(x=>x.id===id); if(c && confirm(`Remove ${c.name}?`)) { channels=channels.filter(x=>x.id!==id); saveChannels(channels); posts=posts.filter(x=>x.creator!==c.name); synthesisResults=generateSynthesis(posts); renderApp(); } };
+    window.handleAddChannel = e => { e.preventDefault(); const u=document.getElementById('cu').value.trim(), n=document.getElementById('cn').value.trim(), cat=document.getElementById('cc').value, isY=u.includes('youtube')||u.includes('youtu.be'); channels.push({id:Date.now(), name:n||(isY?'New YouTube':'New Substack'), platform:isY?'YouTube':'Substack', category:cat, url:u}); saveChannels(channels); fetchAllData(); };
+    window.handleTimezoneChange = t => { saveTimezoneSetting(t); renderApp(); };
+    window.fetchAllData = fetchAllData;
+
+    function init() { try { renderApp(); fetchAllData(); setInterval(fetchAllData, 1000*60*15); } catch(e) { console.error(e); } }
+    if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
+  </script>
+</body>
+</html>
