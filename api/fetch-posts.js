@@ -1,3 +1,15 @@
+module.exports = async function handler(req, res) {
+  // CORS headers - MUST be first
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  // ... rest of your code
 const Parser = require('rss-parser');
 const parser = new Parser();
 
