@@ -38,32 +38,35 @@
   <div id="app" class="max-w-6xl mx-auto px-4 py-6">Initializing TDLR...</div>
 
   <script>
-    // State
-    let currentTab = 'summary';
-    let channels = getSavedChannels();
-    let posts = [];
-    let isLoading = true;
-    let lastFetch = null;
-    let synthesisResults = [];
-    let userTimezone = getSavedTimezone() || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    let backendUrl = window.location.origin; // Points to your Vercel URL automatically
+    // ============================================
+// CONSTANTS FIRST (before any function calls)
+// ============================================
+const defaultChannels = [
+  { id: 1, name: "Gregory Mannarino", platform: "Substack", category: "Finance", url: "https://substack.com/@gregorymannarino" },
+  { id: 2, name: "Candace Owens", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@realcandaceo" },
+  { id: 3, name: "ITM Trading", platform: "YouTube", category: "Finance", url: "https://youtube.com/@itmtrading" },
+  { id: 4, name: "Gerald Celente", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@gcelente" },
+  { id: 5, name: "Simon Dixon", platform: "YouTube", category: "Finance", url: "https://youtube.com/@simondixon21" },
+  { id: 6, name: "Blockchain Backer", platform: "YouTube", category: "Finance", url: "https://youtube.com/@bcbacker" },
+  { id: 7, name: "Richard Fain", platform: "YouTube", category: "Finance", url: "https://www.youtube.com/@richardfain" },
+  { id: 8, name: "American Disclosure News", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@americandiscoursenews" },
+  { id: 9, name: "Ian Carroll", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@iancarrollshow" },
+  { id: 10, name: "Tucker Carlson", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@tuckercarlson" },
+  { id: 12, name: "Sulaiman Ahmed", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@sulaimanahmedx" },
+  { id: 13, name: "Economic Ninja", platform: "YouTube", category: "Finance", url: "https://youtube.com/@economicninja" },
+  { id: 14, name: "Jimmy Dore", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@thejimmydoreshow" }
+];
 
-    const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney', 'UTC'];
-    const defaultChannels = [
-      { id: 1, name: "Gregory Mannarino", platform: "Substack", category: "Finance", url: "https://substack.com/@gregorymannarino" },
-      { id: 2, name: "Candace Owens", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@realcandaceo" },
-      { id: 3, name: "ITM Trading", platform: "YouTube", category: "Finance", url: "https://youtube.com/@itmtrading" },
-      { id: 4, name: "Gerald Celente", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@gcelente" },
-      { id: 5, name: "Simon Dixon", platform: "YouTube", category: "Finance", url: "https://youtube.com/@simondixon21" },
-      { id: 6, name: "Blockchain Backer", platform: "YouTube", category: "Finance", url: "https://youtube.com/@bcbacker" },
-      { id: 7, name: "Richard Fain", platform: "YouTube", category: "Finance", url: "https://www.youtube.com/@richardfain" },
-      { id: 8, name: "American Disclosure News", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@americandiscoursenews" },
-      { id: 9, name: "Ian Carroll", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@iancarrollshow" },
-      { id: 10, name: "Tucker Carlson", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@tuckercarlson" },
-      { id: 12, name: "Sulaiman Ahmed", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@sulaimanahmedx" },
-      { id: 13, name: "Economic Ninja", platform: "YouTube", category: "Finance", url: "https://youtube.com/@economicninja" },
-      { id: 14, name: "Jimmy Dore", platform: "YouTube", category: "News/Politics", url: "https://youtube.com/@thejimmydoreshow" }
-    ];
+// ============================================
+// State (NOW safe to reference defaultChannels)
+// ============================================
+let currentTab = 'summary';
+let channels = getSavedChannels();
+let posts = [];
+let isLoading = true;
+let lastFetch = null;
+let synthesisResults = [];
+let userTimezone = getSavedTimezone() || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     function getSavedChannels() { try { const s = localStorage.getItem('tdlr_channels_v3'); return s ? JSON.parse(s) : defaultChannels; } catch(e) { return defaultChannels; } }
     function saveChannels(ch) { try { localStorage.setItem('tdlr_channels_v3', JSON.stringify(ch)); } catch(e) {} }
