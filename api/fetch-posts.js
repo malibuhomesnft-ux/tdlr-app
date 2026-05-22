@@ -1,15 +1,3 @@
-module.exports = async function handler(req, res) {
-  // CORS headers - MUST be first
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
-  // ... rest of your code
 const Parser = require('rss-parser');
 const parser = new Parser();
 
@@ -17,7 +5,7 @@ const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 let cache = { data: null, timestamp: 0 };
 
 module.exports = async function handler(req, res) {
-  // CORS headers for frontend
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -29,20 +17,26 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const channels = JSON.parse(req.query.channels || '[]');
+    let channels = [];
+    if (typeof req.query.channels === 'string') {
+      try { channels = JSON.parse(req.query.channels); } catch(e) {}
+    }
+
     const allPosts = [];
     const errors = [];
 
     for (const ch of channels) {
       try {
         if (ch.platform === 'YouTube') {
-          // Resolve handle → Channel ID via Official API
           let channelId = ch.channelId;
-          if (!channelId) {
-            const handle = ch.url.split('@')[1]?.split('/')[0] || '';
+          if (!channelId && ch.url.includes('@')) {
+            const handle = ch.url.split('@')[1].split('/')[0].split('?')[0];
             const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${handle}&type=channel&maxResults=1&key=${process.env.YOUTUBE_API_KEY}`);
             const ytData = await ytRes.json();
-            if (ytData.items?.[0]?.id?.channelId) channelId = ytData.items[0].id.channelId;
+            if (ytData.items?.[0]?.id?.channelId) {
+              channelId = ytData.items[0].id.channelId;
+              ch.channelId = channelId;
+            }
           }
 
           if (channelId) {
@@ -63,24 +57,25 @@ module.exports = async function handler(req, res) {
               });
             }
           } else {
-            errors.push(`${ch.name}: Could not resolve YouTube handle`);
+            errors.push(`${ch.name}: Could not resolve handle`);
           }
-        } 
-        else if (ch.platform === 'Substack') {
+        } else if (ch.platform === 'Substack') {
           let feedUrl = ch.url.includes('/feed') ? ch.url : `${ch.url.replace(/\/$/, '')}/feed`;
           const feedData = await parser.parseURL(feedUrl);
-          feedData.items.slice(0, 3).forEach(item => {
-            allPosts.push({
-              id: `sub-${item.guid || item.link}`,
-              creator: ch.name,
-              platform: 'Substack',
-              category: ch.category,
-              title: item.title || 'Untitled',
-              summary: (item.content || item.contentSnippet || '').replace(/<[^>]*>/g, '').slice(0, 280) + '...',
-              link: item.link || ch.url,
-              timestamp: item.pubDate || item.isoDate
+          if (feedData.items) {
+            feedData.items.slice(0, 3).forEach(item => {
+              allPosts.push({
+                id: `sub-${item.guid || item.link}`,
+                creator: ch.name,
+                platform: 'Substack',
+                category: ch.category,
+                title: item.title || 'Untitled',
+                summary: (item.content || item.contentSnippet || '').replace(/<[^>]*>/g, '').slice(0, 280) + '...',
+                link: item.link || ch.url,
+                timestamp: item.pubDate || item.isoDate
+              });
             });
-          });
+          }
         }
       } catch (err) {
         errors.push(`${ch.name}: ${err.message}`);
